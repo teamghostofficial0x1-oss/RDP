@@ -1,0 +1,55 @@
+name: Tailscale RDP (Stable 2026)
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Create RDP User
+        run: |
+          $user = "rdpuser"
+          $password = "rubel@1164"   # change this!
+
+          net user $user $password /add
+          net localgroup administrators $user /add
+          net localgroup "Remote Desktop Users" $user /add
+
+          # Enable RDP
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+          Write-Host "User Created: $user" -ForegroundColor Green
+
+      - name: Install Tailscale
+        run: |
+          choco install tailscale -y
+          Start-Sleep -Seconds 10
+
+      - name: Connect Tailscale
+        env:
+          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+        run: |
+          $ts = "C:\Program Files\Tailscale\tailscale.exe"
+
+          & $ts up --authkey $env:TAILSCALE_AUTHKEY --hostname github-rdp --accept-routes
+
+          Start-Sleep -Seconds 5
+
+          Write-Host "========================================" -ForegroundColor Yellow
+          Write-Host "Tailscale Connected Successfully!" -ForegroundColor Green
+          Write-Host "Check your Tailscale dashboard for IP." -ForegroundColor Cyan
+          Write-Host "========================================" -ForegroundColor Yellow
+
+      - name: Show Tailscale IP
+        run: |
+          & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+
+      - name: Keep Alive (6 Hours)
+        run: |
+          $end = (Get-Date).AddHours(6)
+          while ((Get-Date) -lt $end) {
+            Write-Host "Server is running..."
+            Start-Sleep -Seconds 60
+          }
