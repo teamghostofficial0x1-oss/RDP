@@ -1,44 +1,73 @@
-name: Kali + Tailscale Fixed
+name: Stable Linux SSH + Tailscale Lab
 
 on:
-  push:
-    branches: ["main"]
+  workflow_dispatch:
 
 jobs:
-  kali:
+  build:
     runs-on: ubuntu-latest
 
-    container:
-      image: kalilinux/kali-rolling
-
     steps:
-      - name: Install dependencies
+      - name: Update system
         run: |
-          apt update
-          apt install -y curl iproute2 iptables ca-certificates
+          sudo apt update && sudo apt upgrade -y
 
-      - name: Install Tailscale (manual safe way)
+      - name: Install SSH + tools (NO systemctl usage)
         run: |
-          curl -fsSL https://pkgs.tailscale.com/stable/debian/bullseye.noarmor.gpg \
-            | tee /usr/share/keyrings/tailscale.gpg
+          sudo apt install -y openssh-server sudo curl nmap netcat-traditional git python3 python3-pip net-tools
 
-          echo "deb [signed-by=/usr/share/keyrings/tailscale.gpg] https://pkgs.tailscale.com/stable/debian bullseye main" \
-            > /etc/apt/sources.list.d/tailscale.list
-
-          apt update
-          apt install -y tailscale
-
-      - name: Start tailscaled (NO systemd)
+      - name: Enable SSH service (safe mode)
         run: |
-          tailscaled --tun=userspace-networking &
+          sudo service ssh start || true
+
+      - name: Create user (demon)
+        run: |
+          sudo useradd -m -s /bin/bash demon || true
+          echo "demon:notime" | sudo chpasswd
+          sudo usermod -aG sudo demon
+
+      - name: Allow SSH password login
+        run: |
+          sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config || true
+          sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config || true
+          sudo service ssh restart || true
+
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Start Tailscale (NO systemctl FIX)
+        run: |
+          sudo tailscaled --tun=userspace-networking &
           sleep 5
 
-      - name: Connect to network
+      - name: Connect Tailscale
+        env:
+          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
-          tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} \
-            --hostname=github-kali
+          sudo tailscale up \
+            --authkey=$TAILSCALE_AUTHKEY \
+            --hostname=github-linux-lab
 
-      - name: Verify
+      - name: Show IP
         run: |
-          tailscale status
-          ip a
+          tailscale ip -4 || true
+
+      - name: Pentest tools check
+        run: |
+          nmap --version
+          python3 --version
+
+      - name: 6 Hour Countdown Timer
+        run: |
+          END=$((SECONDS+21600))
+
+          while [ $SECONDS -lt $END ]; do
+            REMAIN=$((END-SECONDS))
+            H=$((REMAIN/3600))
+            M=$(((REMAIN%3600)/60))
+            S=$((REMAIN%60))
+
+            echo "⏳ Remaining Time: ${H}h ${M}m ${S}s"
+            sleep 60
+          done
