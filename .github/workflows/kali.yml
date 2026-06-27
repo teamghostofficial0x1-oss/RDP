@@ -1,0 +1,37 @@
+name: Kali + Tailscale
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  kali-tailscale:
+    runs-on: ubuntu-latest
+
+    container:
+      image: kalilinux/kali-rolling
+
+    steps:
+      - name: Install Tailscale
+        run: |
+          apt update
+          apt install -y curl
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Start Tailscale
+        run: |
+          tailscaled &
+          sleep 3
+          tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=github-kali
+
+      - name: Check connection
+        run: |
+          tailscale status
+          ip a
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Run script
+        run: |
+          bash script.sh
