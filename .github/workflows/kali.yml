@@ -1,10 +1,10 @@
-name: Stable Linux SSH + Tailscale Lab
+name: Stable Kali + Tailscale SSH Lab
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  lab:
     runs-on: ubuntu-latest
 
     steps:
@@ -12,33 +12,17 @@ jobs:
         run: |
           sudo apt update && sudo apt upgrade -y
 
-      - name: Install SSH + tools (NO systemctl usage)
+      - name: Install tools
         run: |
-          sudo apt install -y openssh-server sudo curl nmap netcat-traditional git python3 python3-pip net-tools
+          sudo apt install -y curl nmap netcat-traditional git python3 python3-pip net-tools openssh-client
 
-      - name: Enable SSH service (safe mode)
-        run: |
-          sudo service ssh start || true
-
-      - name: Create user (demon)
-        run: |
-          sudo useradd -m -s /bin/bash demon || true
-          echo "demon:notime" | sudo chpasswd
-          sudo usermod -aG sudo demon
-
-      - name: Allow SSH password login
-        run: |
-          sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config || true
-          sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config || true
-          sudo service ssh restart || true
-
-      - name: Install Tailscale
+      - name: Install Tailscale (safe mode)
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
 
-      - name: Start Tailscale (NO systemctl FIX)
+      - name: Start Tailscale (NO systemd FIX)
         run: |
-          sudo tailscaled --tun=userspace-networking &
+          sudo tailscaled --tun=userspace-networking --state=mem: &
           sleep 5
 
       - name: Connect Tailscale
@@ -47,27 +31,21 @@ jobs:
         run: |
           sudo tailscale up \
             --authkey=$TAILSCALE_AUTHKEY \
-            --hostname=github-linux-lab
+            --hostname=github-lab \
+            --accept-routes || true
 
       - name: Show IP
         run: |
-          tailscale ip -4 || true
+          sudo tailscale ip -4 || true
 
-      - name: Pentest tools check
+      - name: Keep Alive (max GitHub limit)
         run: |
-          nmap --version
-          python3 --version
+          echo "Keeping job alive..."
 
-      - name: 6 Hour Countdown Timer
-        run: |
-          END=$((SECONDS+21600))
+          END=$((SECONDS+21600)) # 6 hours max
 
           while [ $SECONDS -lt $END ]; do
-            REMAIN=$((END-SECONDS))
-            H=$((REMAIN/3600))
-            M=$(((REMAIN%3600)/60))
-            S=$((REMAIN%60))
-
-            echo "⏳ Remaining Time: ${H}h ${M}m ${S}s"
+            echo "RUNNING: $(date)"
+            tailscale status || true
             sleep 60
           done
