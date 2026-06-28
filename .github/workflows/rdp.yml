@@ -1,16 +1,19 @@
-name: Tailscale RDP (Stable 2026)
+name: Tailscale RDP (Updated 2026)
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: windows-2022
+    runs-on: windows-latest
+    timeout-minutes: 360
 
     steps:
       - name: Create RDP User
+        shell: powershell
         run: |
           $user = "rdpuser"
-          $password = "rubel@1164"   # change this!
+          $password = "Rubel@1164"
 
           net user $user $password /add
           net localgroup administrators $user /add
@@ -20,36 +23,51 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-          Write-Host "User Created: $user" -ForegroundColor Green
+          Write-Host "RDP User Created Successfully"
 
-      - name: Install Tailscale
+      - name: Update Chocolatey
+        shell: powershell
         run: |
-          choco install tailscale -y
+          choco upgrade chocolatey -y
+
+      - name: Install Latest Tailscale
+        shell: powershell
+        run: |
+          choco install tailscale -y --no-progress
           Start-Sleep -Seconds 10
 
       - name: Connect Tailscale
+        shell: powershell
         env:
           TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
           $ts = "C:\Program Files\Tailscale\tailscale.exe"
 
-          & $ts up --authkey $env:TAILSCALE_AUTHKEY --hostname github-rdp --accept-routes
+          & $ts up `
+            --authkey=$env:TAILSCALE_AUTHKEY `
+            --hostname=github-rdp `
+            --accept-routes
 
           Start-Sleep -Seconds 5
 
-          Write-Host "========================================" -ForegroundColor Yellow
-          Write-Host "Tailscale Connected Successfully!" -ForegroundColor Green
-          Write-Host "Check your Tailscale dashboard for IP." -ForegroundColor Cyan
-          Write-Host "========================================" -ForegroundColor Yellow
-
-      - name: Show Tailscale IP
+      - name: Show Tailscale Status
+        shell: powershell
         run: |
+          & "C:\Program Files\Tailscale\tailscale.exe" status
           & "C:\Program Files\Tailscale\tailscale.exe" ip -4
 
+      - name: Windows Information
+        shell: powershell
+        run: |
+          systeminfo
+          Get-ComputerInfo | Select WindowsProductName, WindowsVersion
+
       - name: Keep Alive (6 Hours)
+        shell: powershell
         run: |
           $end = (Get-Date).AddHours(6)
+
           while ((Get-Date) -lt $end) {
-            Write-Host "Server is running..."
+            Write-Host "Server Running - $(Get-Date)"
             Start-Sleep -Seconds 60
           }
